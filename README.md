@@ -1,5 +1,7 @@
 # sync
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/notorious-go/sync.svg)](https://pkg.go.dev/github.com/notorious-go/sync)
+
 This repository provides supplementary Go concurrency primitives in addition to the ones provided
 by the language, its standard library, and extension packages.
 
