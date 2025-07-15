@@ -16,14 +16,14 @@ func ExampleTotalOrder() {
 
 	// Start three writes concurrently
 	for i := 1; i <= 3; i++ {
+		h := order.Put()
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			h := order.Put()
-			<-h.Wait() // Wait for previous operations to complete
+			defer h.Done() // Ensure the handle is marked as done.
+			<-h.Wait()     // Wait for previous operations to complete
 			fmt.Printf("Writing record %d\n", id)
 			time.Sleep(10 * time.Millisecond) // Simulate work
-			h.Done()
 		}(i)
 	}
 
