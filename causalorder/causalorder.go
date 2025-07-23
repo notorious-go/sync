@@ -53,6 +53,11 @@ func (c *chain) Advance() chainNode {
 
 // IsHead checks if the given node is the head of the chain.
 //
+// If the given node is the head of the chain, it means that there are no pending
+// operations in this chain that are waiting for its completion. In other words,
+// it indicates that if the operation associated with that node is done, this
+// chain is equivalent to an empty (zero-value) chain.
+//
 // This function is valid to call even if the chain is nil, in which case it
 // returns false, indicating that the node cannot be the head of a nil chain.
 func (c *chain) IsHead(node chainNode) bool {
@@ -114,12 +119,22 @@ func (m *chainMap[K]) Advance(key K) (head chainNode) {
 // the head of the chain is the given head node. The given head node is expected
 // to be returned by a prior call to Advance() for the same key.
 //
+// After a chain is deleted, further calls to Advance() for the same key will
+// create a new chain, effectively resetting the state for that key. Any inflight
+// operations waiting for nodes in the deleted chain will not be affected, as
+// they will continue to wait for their respective dependencies to complete.
+//
 // If the chain is already deleted or if the head is not the given node, the
 // function does nothing.
 func (m *chainMap[K]) Delete(key K, head chainNode) {
 	chains, release := m.acquire()
 	defer release()
+	// If the given node is indeed the head of the chain (associated with the given
+	// key), it means that there are no inflight operations waiting for that head. In
+	// which case, we can safely delete the chain from this map.
 	if c, ok := chains[key]; ok && c.IsHead(head) {
+		// Deleting the chain from this map is equivalent to resetting the chain to its
+		// zero value, which is ready to use.
 		delete(chains, key)
 	}
 }

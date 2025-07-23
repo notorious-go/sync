@@ -34,19 +34,11 @@ func (s *Stream[K]) AfterHandle(keys ...K) Handle {
 	// If multiple keys are provided, we need to create a vector handle that will
 	// wait for all of them to become ready and signal completion for each of them
 	// when it is marked as done.
-	elements := make([]vectorElem[K], len(keys))
-	for i, key := range keys {
-		wait, done := s.chains.Advance(key)
-		elements[i] = vectorElem[K]{
-			key:  key,
-			wait: wait,
-			done: done,
-		}
+	elements := make(map[K]chainNode, len(keys))
+	for _, key := range keys {
+		elements[key] = s.chains.Advance(key)
 	}
-	return &vectorHandle[K]{
-		namespace: &s.chains,
-		elements:  elements,
-	}
+	return &vectorHandle[K]{chains: &s.chains, nodes: elements}
 }
 
 // A loneHandle is a Handle that is ready immediately, and marking it as done
@@ -78,30 +70,26 @@ func (h *loneHandle) Done() {}
 // It is used to synchronize an operation that depends on multiple operations
 // (associated with the given keys) to complete before it can proceed.
 type vectorHandle[K comparable] struct {
-	namespace *chainMap[K]
-	elements  []vectorElem[K]
+	// The map of chains which this handle is associated with. When the handle is
+	// Done() and no more operations are pending for this key, the chain will be
+	// deleted from this map.
+	chains *chainMap[K]
+	// Maps each key to its corresponding chain node, which is used to track the
+	// state of the operation associated with that key.
+	nodes map[K]chainNode
 
-	waitOnce sync.Once
-	waitCh   chan struct{}
+	// The done channels of the vector's nodes must be closed only once. Without this
+	// flag, calling Done() twice would've panicked because channels cannot be closed
+	// more than once.
 	doneOnce sync.Once
-}
-
-// A vectorElem represents a single element in a vector handle, which is
-// associated with a specific key and has its own wait and done channels.
-type vectorElem[K comparable] struct {
-	key K
-	// The wait channel is closed when all previous operations in the chain have
-	// completed, allowing the next operation (the one associated with this handle)
-	// to proceed.
-	wait <-chan struct{}
-	// The done channel is used to signal that the operation associated with this
-	// handle has completed, thereby allowing the next operation in the chain to
-	// proceed.
-	done chan<- struct{}
+	// Waiting for all operations in the vector to complete is done lazily, so that
+	// the wait channel is only created when Wait() is called for the first time.
+	waitLazily sync.Once
+	waitCh     chan struct{}
 }
 
 func (h *vectorHandle[K]) Wait() <-chan struct{} {
-	h.waitOnce.Do(func() {
+	h.waitLazily.Do(func() {
 		h.waitCh = make(chan struct{})
 		if h.shortCircuit() {
 			// If all vector elements are already ready, we can close the wait channel
@@ -110,20 +98,22 @@ func (h *vectorHandle[K]) Wait() <-chan struct{} {
 			close(h.waitCh)
 			return
 		}
-		go func(elems []vectorElem[K], ready chan struct{}) {
-			for i := range elems {
-				<-elems[i].wait
+		go func(elems map[K]chainNode, ready chan struct{}) {
+			for _, n := range elems {
+				<-n.wait
 			}
 			close(ready)
-		}(h.elements, h.waitCh)
+		}(h.nodes, h.waitCh)
 	})
 	return h.waitCh
 }
 
+// ShortCircuit checks if all chain elements in the vector are already ready,
+// returning true if they are, and false otherwise.
 func (h *vectorHandle[K]) shortCircuit() (completed bool) {
-	for i := range h.elements {
+	for _, n := range h.nodes {
 		select {
-		case <-h.elements[i].wait:
+		case <-n.wait:
 		default:
 			// If even a single element is not immediately ready, then the short-circuiting
 			// is not possible, and we need to wait for all of them to become ready.
@@ -133,22 +123,24 @@ func (h *vectorHandle[K]) shortCircuit() (completed bool) {
 	return true
 }
 
+// Done attempts to free the memory used by chains that are no longer relevant.
+// Chains become irrelevant when all operations associated with them have been
+// completed.
 func (h *vectorHandle[K]) Done() {
 	h.doneOnce.Do(func() {
-		chains, release := h.namespace.acquire()
-		defer release()
-		for _, elem := range h.elements {
-			close(elem.done)
+		for k, n := range h.nodes {
 			// Clean up the chain for this key if it is no longer necessary.
 			//
-			// If the done channel is not the head of the chain, it means that there are
-			// still operations pending for this key, so we should not delete the chain yet.
-			if c, ok := chains[elem.key]; ok && c.head == elem.done {
-				// When the done channel is the head of the chain, we can delete the chain for
-				// this key, as it means that no more ongoing operations are pending completion
-				// for this key.
-				delete(chains, elem.key)
-			}
+			// The map's Delete method guarantees that the chain is removed (and its memory
+			// reclaimed) only if the node being marked as done is the head of the chain for
+			// its key.
+			//
+			// If the node is not the head, it means that there are still operations waiting
+			// for this node to complete, so we must keep the chain alive. Otherwise, any
+			// Advance() calls to that chain would be detached from those still in progress
+			// operations, which violates the causal order.
+			h.chains.Delete(k, n)
+			close(n.done)
 		}
 	})
 }
