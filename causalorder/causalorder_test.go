@@ -7,7 +7,6 @@ import (
 
 func TestTotalOrdering(t *testing.T) {
 	synctest.Run(func() {
-		var order TotalOrder
 
 	})
 }
