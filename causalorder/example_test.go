@@ -4,100 +4,167 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"time"
 
 	"github.com/notorious-go/sync/causalorder"
 )
+
+// EventSource is a sample log of user actions that we will use to demonstrate
+// causal ordering.
+//
+// This data is synthetic, but in a real application, it would come from an event
+// source like a message queue or a database change stream.
+//
+// Each action is associated with a user, and we want to ensure that actions for
+// the same user are audited in the order they were performed, even if the events
+// are processed concurrently.
+var EventSource = []struct {
+	User   string
+	Action string
+}{
+	{User: "alice", Action: "login"},
+	{User: "bob", Action: "login"},
+	{User: "alice", Action: "purchase"},
+	{User: "bob", Action: "logout"},
+	{User: "alice", Action: "logout"},
+}
 
 // This example demonstrates total causal ordering by showing how to ensure
 // database writes happen in order for the same record, even when started
 // concurrently.
 func ExampleTotalOrder() {
-	// For this example, we will use a TotalOrder for each of the two database
-	// records.
+	// For this example, we will use a TotalOrder for each of the two users.
 	//
 	// Note how the zero value of TotalOrder is ready to use.
 	var (
-		record1 causalorder.TotalOrder
-		record2 causalorder.TotalOrder
+		alice causalorder.TotalOrder
+		bob   causalorder.TotalOrder
 	)
 
-	// For this example, we define a Change Data Capture (CDC) type that represents a
-	// change to a database record.
-	type CDC struct {
-		Record int
+	// This example uses a simple in-memory audit log to demonstrate the causal
+	// ordering of user actions.
+	var database AuditLog
+
+	var wg sync.WaitGroup
+	for _, event := range EventSource {
+		// Depending on the record, we will use the corresponding TotalOrder to guarantee
+		// that changes to the same user are logged in order.
+		var op causalorder.Operation
+		switch event.User {
+		case "alice":
+			op = alice.HappensAfter()
+		case "bob":
+			op = bob.HappensAfter()
+		default:
+			panic("Unknown user: " + event.User)
+		}
+
+		// With the causal order package, we can perform operations concurrently while
+		// ensuring that dependent operations are executed in the correct order.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// We must always call Complete() on the operation to mark it as done, even if it
+			// fails/panics, so we defer the call to Complete().
+			defer op.Complete()
+
+			// The Ready() channel will block until the operation is ready to be executed.
+			// Block on it indefinitely or select on it with a timeout or cancellation
+			// context in a real application.
+			<-op.Ready()
+
+			// After the Ready channel synchronizes, we know that all previous operations for
+			// the same user have completed, and we can safely apply the change to the
+			// database in concurrent goroutines.
+			database.Append(event.User, event.Action)
+		}()
 	}
 
-	// For each record, we will create three operations that must be executed in
-	// order, even though they are scheduled for execution concurrently.
-	record1changes := [3]CDC{}
-
-	// Output:
-	// Writing record 1
-	// Writing record 2
-	// Writing record 3
+	wg.Wait()
+	fmt.Println(database.String())
+	// Unordered Output:
+	// User alice: [login purchase logout]
+	// User bob: [login logout]
 }
 
-// ExamplePartialOrder shows how to maintain order within each partition
-// while allowing different partitions to proceed independently.
-// The zero value is ready to use.
+// This example demonstrates partial causal ordering by showing how to ensure
+// database writes happen in order for the same record, even when started
+// concurrently.
+//
+// The PartialOrder type supports any number of partitions, allowing you to
+// manage dynamic sets of dependent operations.
 func ExamplePartialOrder() {
-	var order causalorder.PartialOrder[string]
+	// For this example, we will use a PartialOrder to ensure that actions for the
+	// same user are logged in order, even when started concurrently.
+	//
+	// Note that any comparable type can be used as a key for the PartialOrder.
+	//
+	// Note how the zero value of PartialOrder is ready to use.
+	var ordering causalorder.PartialOrder[string]
 
-	// Start all operations
-	opA1 := order.HappensAfter("alice")
-	opA2 := order.HappensAfter("alice")
-	opA3 := order.HappensAfter("alice")
-	opB1 := order.HappensAfter("bob")
-	opB2 := order.HappensAfter("bob")
+	// This example uses a simple in-memory audit log to demonstrate the causal
+	// ordering of user actions.
+	var database AuditLog
 
-	// Check which operations are ready
-	select {
-	case <-opA1.Ready():
-		fmt.Println("alice: login")
-		opA1.Complete()
-	default:
-		fmt.Println("alice login blocked")
+	var wg sync.WaitGroup
+	for _, event := range EventSource {
+		// With PartialOrder, the HappensAfter method allows us to dynamically assign
+		// operations to specific keys (in this case, usernames).
+		op := ordering.HappensAfter(event.User)
+
+		// With the causal order package, we can perform operations concurrently while
+		// ensuring that dependent operations are executed in the correct order.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// We must always call Complete() on the operation to mark it as done, even if it
+			// fails/panics, so we defer the call to Complete().
+			defer op.Complete()
+
+			// The Ready() channel will block until the operation is ready to be executed.
+			// Block on it indefinitely or select on it with a timeout or cancellation
+			// context in a real application.
+			<-op.Ready()
+
+			// After the Ready channel synchronizes, we know that all previous operations for
+			// the same user have completed, and we can safely apply the change to the
+			// database in concurrent goroutines.
+			database.Append(event.User, event.Action)
+		}()
 	}
 
-	select {
-	case <-opB1.Ready():
-		fmt.Println("bob: login")
-		opB1.Complete()
-	default:
-		fmt.Println("bob login blocked")
-	}
+	wg.Wait()
+	fmt.Println(database.String())
+	// Unordered Output:
+	// User alice: [login purchase logout]
+	// User bob: [login logout]
+}
 
-	select {
-	case <-opA2.Ready():
-		fmt.Println("alice: purchase")
-		opA2.Complete()
-	default:
-		fmt.Println("alice purchase blocked")
-	}
+// AuditLog is a simple in-memory log that records user actions in the order they
+// were appended. The Append method is thread-safe and allows concurrent
+// appending of actions by different users, and the String method returns a
+// formatted string representation of the log.
+type AuditLog struct {
+	m  map[string][]string
+	mu sync.Mutex
+}
 
-	select {
-	case <-opB2.Ready():
-		fmt.Println("bob: logout")
-		opB2.Complete()
-	default:
-		fmt.Println("bob logout blocked")
+func (l *AuditLog) Append(user, action string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.m == nil {
+		l.m = make(map[string][]string)
 	}
+	l.m[user] = append(l.m[user], action)
+}
 
-	select {
-	case <-opA3.Ready():
-		fmt.Println("alice: logout")
-		opA3.Complete()
-	default:
-		fmt.Println("alice logout blocked")
+func (l *AuditLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var s string
+	for user, actions := range l.m {
+		s += fmt.Sprintf("User %v: %v\n", user, actions)
 	}
-
-	// Output:
-	// alice: login
-	// bob: login
-	// alice: purchase
-	// bob: logout
-	// alice: logout
+	return s
 }
 
 // This example demonstrates how to determine the current status of an Operation
