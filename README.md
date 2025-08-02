@@ -1,4 +1,4 @@
-# sync
+# Notorious Concurrency Constructs
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/notorious-go/sync.svg)](https://pkg.go.dev/github.com/notorious-go/sync)
 
