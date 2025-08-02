@@ -21,7 +21,7 @@ Each concurrency primitive is implemented as its own Go module to prevent depend
 import only the specific constructs you need:
 
 ```
-go get github.com/danielorbach/notorious-sync/[module-name]
+go get github.com/notorious-go/sync/[module-name]
 ```
 
 Each module follows standard Go package conventions:
@@ -33,8 +33,41 @@ Each module follows standard Go package conventions:
 
 ## Modules
 
+This repository does not contain a Go module at its root by design. Instead, each concurrency
+primitive is packaged as an independent module in its own subdirectory. This approach prevents
+dependency bloat and allows you to import only the specific constructs you need.
+
 _Modules will be added as they are developed. Each will be documented here with usage examples and
 installation instructions._
+
+### Versioning with Git Tags
+
+Each module in this repository is versioned independently using Git tags with the module path prefix.
+This follows Go's multi-module repository conventions:
+
+- Root-level tags like `v1.0.0` would apply to a root module (which doesn't exist here).
+- Module-specific tags like `modulename/v1.0.0` version individual modules.
+- Each module can evolve at its own pace without affecting others.
+
+For example:
+
+```
+git tag workerpool/v1.0.0    # versions the workerpool module at v1.0.0
+git tag semaphore/v3.2.1     # versions the semaphore module at v3.2.1
+```
+
+When importing, Go will resolve the correct version for each module:
+
+```go
+module example.com
+
+go 1.24
+
+require (
+    github.com/notorious-go/sync/workerpool v1.0.0  // uses workerpool/v1.0.0 tag
+    github.com/notorious-go/sync/semaphore v3.2.1   // uses semaphore/v3.2.1 tag
+)
+```
 
 ## Contributing
 
