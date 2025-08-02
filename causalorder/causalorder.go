@@ -1,31 +1,3 @@
-// Package causalorder provides synchronization primitives for enforcing
-// causal ordering of operations in concurrent programs.
-//
-// The package offers three main ordering strategies:
-//
-//   - [TotalOrder]: Ensures all operations execute in a strict sequential order.
-//   - [PartialOrder]: Ensures operations with the same key execute sequentially,
-//     while operations with different keys can execute concurrently.
-//   - [VectorOrder]: Ensure operations execute in a causal order based on their
-//     keys, allowing for concurrent execution of operations with multiple different
-//     keys.
-//
-// All ordering strategies use an Operation-based API where HappensAfter returns
-// an [Operation] that must be completed before the next operations can proceed.
-//
-// When working with operations, it is important to call [Operation.Complete]
-// when the operation finishes, regardless of whether it succeeds, fails, or is
-// cancelled. This is crucial to maintain the correctness of causal chains which
-// prevents deadlocks, memory, and goroutine leaks.
-//
-// Note that this package only provides ordering guarantees and does not
-// propagate cancellation or error states between operations. If an operation
-// fails, the caller should implement their own error handling while still
-// calling [Operation.Complete] to maintain the correctness of causal chains. For
-// example, if an operation needs to be cancelled, the caller should implement
-// their own cancellation mechanism (such as using select with context.Done())
-// and ensure [Operation.Complete] is still called to unblock the following
-// cancelled operations in the chain.
 package causalorder
 
 import (
