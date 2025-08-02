@@ -4,20 +4,20 @@ package causalgroup
 // active goroutines in the group is currently below the configured limit.
 //
 // Like Go, the new goroutine will block before calling f until all previously
-// submitted tasks have completed.
+// submitted tasks with the same partition key have completed.
 //
 // The return value reports whether the goroutine was started. If it returns
 // false, then the underlying causal operation was never started.
-func (q *Queue) TryGo(f func()) (started bool) {
+func (t *Topic[K]) TryGo(partition K, f func()) (started bool) {
 	// Note: this allows barging iff channels in general allow barging; see
 	// the comment on TryAcquire for a bit more details.
-	if !q.sem.TryAcquire() {
+	if !t.sem.TryAcquire() {
 		return false
 	}
-	q.wg.Add(1)
-	op := q.ordering.HappensAfter()
+	t.wg.Add(1)
+	op := t.ordering.HappensAfter(partition)
 	go func() {
-		defer q.done(op)
+		defer t.done(op)
 		<-op.Ready()
 		f()
 	}()
