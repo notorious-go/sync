@@ -6,8 +6,9 @@
 //   - [TotalOrder]: Ensures all operations execute in a strict sequential order.
 //   - [PartialOrder]: Ensures operations with the same key execute sequentially,
 //     while operations with different keys can execute concurrently.
-//   - [Stream]: Ensure operations execute in a causal order based on their keys,
-//     allowing for concurrent execution of operations with multiple different keys.
+//   - [VectorOrder]: Ensure operations execute in a causal order based on their
+//     keys, allowing for concurrent execution of operations with multiple different
+//     keys.
 //
 // All ordering strategies use an Operation-based API where HappensAfter returns
 // an [Operation] that must be completed before the next operations can proceed.
