@@ -4,13 +4,13 @@ import (
 	"sync"
 )
 
-type Stream[K comparable] struct {
+type VectorOrder[K comparable] struct {
 	chains chainMap[K]
 }
 
 // HappensAfter returns an Operation that synchronizes after the operations
 // associated with the given keys have completed.
-func (s *Stream[K]) HappensAfter(keys ...K) Operation {
+func (s *VectorOrder[K]) HappensAfter(keys ...K) Operation {
 	if len(keys) == 0 {
 		// If no keys are provided, we can just return an Operation that is ready
 		// immediately and does not require any cleaning up.
