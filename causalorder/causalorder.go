@@ -32,6 +32,84 @@ import (
 	"sync"
 )
 
+// Operation represents a unit of work in a causally ordered execution chain. It
+// provides synchronization points for managing when an operation can begin and
+// signalling when it has completed.
+//
+// An Operation is the fundamental building block for enforcing "happens-after"
+// relationships in concurrent programs. Each Operation waits for its causal
+// dependencies to complete before becoming ready and signals its own completion
+// to unblock dependent operations.
+//
+// The Operation interface provides a channel-based API that enables flexible
+// synchronization patterns:
+//   - Block until ready using <-op.Ready()
+//   - Select with multiple channels: select { case <-op.Ready(): ... case <-ctx.Done(): ... }
+//   - Check readiness without blocking: select { case <-op.Ready(): ... default: ... }
+//   - Monitor completion: <-op.Completed()
+//
+// Operations are safe for concurrent use. While typically a single goroutine
+// manages an operation's lifecycle, the channels can be safely accessed from
+// multiple goroutines when coordination is needed.
+type Operation interface {
+	// Ready returns a channel that closes when all causal dependencies have
+	// completed, signalling that this operation may begin execution.
+	//
+	// The channel is closed exactly once and remains closed thereafter. Multiple
+	// goroutines may safely wait on this channel.
+	//
+	// For the first operation in a chain, this channel is closed immediately,
+	// allowing it to proceed without waiting.
+	Ready() <-chan struct{}
+
+	// Completed returns a channel that closes when this operation has been marked
+	// as complete via the Complete method.
+	//
+	// The channel is closed when Complete is called for the first time and
+	// remains closed thereafter.
+	Completed() <-chan struct{}
+
+	// Complete marks this operation as finished, closing the Completed channel and
+	// allowing any causally dependent operations to proceed.
+	//
+	// This method MUST be called at least once when the operation finishes, whether
+	// it succeeds, fails, or is cancelled. Failing to call Complete will cause all
+	// dependent operations to block indefinitely, potentially causing goroutine
+	// and memory leaks.
+	//
+	// Users are encouraged to use defer op.Complete() immediately after starting an
+	// operation to ensure completion even in case of errors or early returns.
+	//
+	// Complete is safe to call multiple times - subsequent calls are no-ops.
+	// However, for clarity and correctness, it should typically be called exactly
+	// once per operation.
+	Complete()
+}
+
+// Await is a convenience function that blocks until the given Operation is ready
+// to execute and returns a done function that must be called to mark the
+// operation as complete.
+//
+// This function provides syntactic sugar for the common pattern of waiting for
+// an operation to be ready and then marking it as complete:
+//
+//	done := causalorder.Await(op)
+//	defer done()
+//	// ... perform operation ...
+//
+// This is equivalent to:
+//
+//	<-op.Ready()
+//	defer op.Complete()
+//	// ... perform operation ...
+//
+// The returned done function is safe to call multiple times and should always be
+// called to prevent blocking further operations in the causal chain.
+func Await(op Operation) (done func()) {
+	<-op.Ready()
+	return op.Complete
+}
+
 // A chain is a linked list of channels that allows serializing concurrent
 // operations into a linear order, wherein each operation must wait for all
 // previous operations to complete before beginning execution.
@@ -87,7 +165,7 @@ func (c *chain) IsHead(node chainNode) bool {
 // causally ordered chain. Nodes in the chain are linked together such that each
 // node's wait channel is the done channel of the previous node.
 type chainNode struct {
-	// The wait channel is closed when the previous operation in the chain have
+	// The wait channel is closed when the previous operation in the chain has
 	// completed, allowing this operation to proceed.
 	//
 	// This channel is the done channel of the previous node in the chain, or
@@ -166,235 +244,4 @@ func (m *chainMap[K]) Delete(key K, head chainNode) {
 		// zero value, which is ready to use.
 		delete(chains, key)
 	}
-}
-
-// Operation represents a unit of work in a causally ordered execution chain. It
-// provides synchronization points for managing when an operation can begin and
-// signaling when it has completed.
-//
-// An Operation is the fundamental building block for enforcing "happens-after"
-// relationships in concurrent programs. Each Operation waits for its causal
-// dependencies to complete before becoming ready, and signals its own completion
-// to unblock dependent operations.
-//
-// The Operation interface provides a channel-based API that enables flexible
-// synchronization patterns:
-//   - Block until ready using <-op.Ready()
-//   - Select with multiple channels: select { case <-op.Ready(): ... case <-ctx.Done(): ... }
-//   - Check readiness without blocking: select { case <-op.Ready(): ... default: ... }
-//   - Monitor completion: <-op.Completed()
-//
-// Operations are safe for concurrent use. While typically a single goroutine
-// manages an operation's lifecycle, the channels can be safely accessed from
-// multiple goroutines when coordination is needed.
-type Operation interface {
-	// Ready returns a channel that closes when all causal dependencies have
-	// completed, signalling that this operation may begin execution.
-	//
-	// The channel is closed exactly once and remains closed thereafter. Multiple
-	// goroutines may safely wait on this channel.
-	//
-	// For the first operation in a chain, this channel is closed immediately,
-	// allowing it to proceed without waiting.
-	Ready() <-chan struct{}
-
-	// Completed returns a channel that closes when this operation has been marked
-	// as complete via the Complete method.
-	//
-	// The channel is closed when Complete is called for the first time and
-	// remains closed thereafter.
-	Completed() <-chan struct{}
-
-	// Complete marks this operation as finished, closing the Completed channel and
-	// allowing any causally dependent operations to proceed.
-	//
-	// This method MUST be called at least once when the operation finishes, whether
-	// it succeeds, fails, or is cancelled. Failing to call Complete will cause all
-	// dependent operations to block indefinitely, potentially causing goroutine
-	// and memory leaks.
-	//
-	// Users are encouraged to use defer op.Complete() immediately after starting an
-	// operation to ensure completion even in case of errors or early returns.
-	//
-	// Complete is safe to call multiple times - subsequent calls are no-ops.
-	// However, for clarity and correctness, it should typically be called exactly
-	// once per operation.
-	Complete()
-}
-
-// TotalOrder enforces a strict sequential ordering of all associated operations.
-// This is useful when operations must be serialized globally, regardless of
-// their keys or other attributes.
-//
-// Operations added via HappensAfter will execute one at a time in the order they
-// were added.
-//
-// Though trivial, this ordering is useful for composing more complex
-// synchronization constructs that compose several total orders.
-//
-// Most linear chains of operations are better serialized using mutexes,
-// channels, or other synchronization primitives. Nonetheless, TotalOrder
-// presents a unique synchronization style applicable when operations have a
-// definite order of execution and must be serialized.
-//
-// For example, consider concurrent database writes. If only one write operation
-// is allowed to execute at a time, use a semaphore or a mutex to limit
-// concurrency when writing to the database. However, if the order of writing ops
-// matters, use TotalOrder to ensure that writes are executed in the order they
-// were added, while spawning goroutines for each writer.
-//
-// The TotalOrder is not safe for concurrent use. It must be used from a single
-// goroutine that is responsible for defining the definitive order of operations.
-// Per the explanation above, it would be meaningless to use it concurrently
-// because the order would not be well-defined, thus violating the strictness of
-// the total order.
-//
-// The zero-value TotalOrder is ready to use.
-type TotalOrder chain
-
-// HappensAfter returns an Operation representing a unit of work that must execute
-// after all previously added operations have completed. Operations are executed
-// in the exact order that HappensAfter was called.
-//
-// The first operation added to a TotalOrder proceeds immediately without
-// waiting. Each following operation waits for its immediate predecessor to call
-// Complete() before it can proceed.
-//
-// IMPORTANT: The caller MUST call Complete() on the returned Operation when the
-// operation completes, even if the operation fails or is cancelled. Failing to
-// call Complete() will cause all subsequent operations to block indefinitely, which
-// may result in memory leaks.
-//
-// Note that this package only provides ordering guarantees and does not
-// propagate cancellation signals between operations. If an operation needs to be
-// cancelled, the caller should implement their own cancellation mechanism (such
-// as using select with context.Done()) and ensure Complete() is still called to
-// unblock the following operations in the chain.
-func (o *TotalOrder) HappensAfter() Operation {
-	n := (*chain)(o).Advance()
-	return &totalOperation{chainNode: n}
-}
-
-// A totalOperation implements the Operation interface for a single totally
-// ordered chain of operations.
-type totalOperation struct {
-	chainNode
-	// The done channel must be closed only once. Without this flag, calling Complete()
-	// twice would've panicked because channels cannot be closed more than once.
-	doneOnce sync.Once
-}
-
-func (h *totalOperation) Ready() <-chan struct{} {
-	return h.wait
-}
-
-func (h *totalOperation) Completed() <-chan struct{} {
-	return h.done
-}
-
-func (h *totalOperation) Complete() {
-	h.doneOnce.Do(func() {
-		close(h.done)
-	})
-}
-
-// PartialOrder enforces a strict sequential ordering for operations with the
-// same key, while allowing operations with different keys to execute
-// concurrently. This is useful for scenarios where operations must be serialized
-// per key, such as when processing events that are grouped by an identifier.
-//
-// Operations added via HappensAfter will execute in the order they were added
-// for each key, but operations with different keys can run in parallel.
-//
-// The PartialOrder is not safe for concurrent use. It must be used from a single
-// goroutine that is responsible for managing the execution of operations
-// associated with it. This is because the order of operations is defined by the
-// order in which they are added to the PartialOrder.
-//
-// The zero-value PartialOrder is ready to use.
-type PartialOrder[K comparable] chainMap[K]
-
-// HappensAfter returns an Operation representing a unit of work that must execute
-// after all previously added operations for the given key have completed.
-// Operations with the same key are executed in the exact order that HappensAfter
-// was called, while operations with different keys may execute concurrently.
-//
-// The first operation for a given key proceeds immediately without waiting. Each
-// following operation for that key waits for its immediate predecessor with the
-// same key to call Complete() before it can proceed.
-//
-// IMPORTANT: The caller MUST call Complete() on the returned Operation when the
-// operation completes, even if the operation fails or is cancelled. Failing to
-// call Complete() will cause all subsequent operations for that key to block
-// indefinitely, which may result in memory leaks.
-//
-// When the last pending operation for a key completes, the key's internal chain
-// is automatically cleaned up to prevent memory leaks.
-//
-// Note that this package only provides ordering guarantees and does not
-// propagate cancellation signals between operations. If an operation needs to be
-// cancelled, the caller should implement their own cancellation mechanism (such
-// as using select with context.Done()) and ensure Complete() is still called to
-// unblock the following operations for that key.
-func (o *PartialOrder[K]) HappensAfter(key K) Operation {
-	chains := (*chainMap[K])(o)
-	head := chains.Advance(key)
-	return &partialOperation[K]{
-		chainNode: head,
-		key:       key,
-		chains:    chains,
-	}
-}
-
-type partialOperation[K comparable] struct {
-	chainNode
-	// The done channel must be closed only once. Without this flag, calling Complete()
-	// twice would've panicked because channels cannot be closed more than once.
-	doneOnce sync.Once
-
-	// The key with which this operation is associated in the namespace of chains.
-	key K
-	// The map of chains which this operation is associated with. When the operation is
-	// Complete() and no more operations are pending for this key, the chain will be
-	// deleted from this map.
-	chains *chainMap[K]
-}
-
-func (h *partialOperation[K]) Ready() <-chan struct{} {
-	return h.wait
-}
-
-func (h *partialOperation[K]) Completed() <-chan struct{} {
-	return h.done
-}
-
-func (h *partialOperation[K]) Complete() {
-	h.doneOnce.Do(func() {
-		close(h.done)
-		h.chains.Delete(h.key, h.chainNode)
-	})
-}
-
-// Await is a convenience function that blocks until the given Operation is ready
-// to execute and returns a done function that must be called to mark the
-// operation as complete.
-//
-// This function provides syntactic sugar for the common pattern of waiting for
-// an operation to be ready and then marking it as complete:
-//
-//	done := causalorder.Await(op)
-//	defer done()
-//	// ... perform operation ...
-//
-// This is equivalent to:
-//
-//	<-op.Ready()
-//	defer op.Complete()
-//	// ... perform operation ...
-//
-// The returned done function is safe to call multiple times and should always be
-// called to prevent blocking further operations in the causal chain.
-func Await(op Operation) (done func()) {
-	<-op.Ready()
-	return op.Complete
 }
