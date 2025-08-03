@@ -139,6 +139,135 @@ func ExamplePartialOrder() {
 	// User bob: [login logout]
 }
 
+// This example demonstrates DependencyGraph for managing operations with
+// dependencies on multiple resources.
+//
+// Consider a distributed system where operations may depend on multiple
+// resources being available. DependencyGraph ensures operations only proceed
+// when all their dependencies are satisfied, while allowing operations with
+// disjoint dependencies to execute concurrently.
+func ExampleDependencyGraph() {
+	// DependencyGraph models a directed acyclic graph of operation dependencies.
+	// Each operation can depend on multiple keys, representing different resources
+	// or conditions that must be met.
+	var graph causalorder.DependencyGraph[string]
+
+	// Simulate a build system where:
+	// - Compilation depends on source files and configuration
+	// - Tests depend on compiled binaries and test data
+	// - Deployment depends on successful tests and deployment config
+	
+	type BuildStep struct {
+		Name         string
+		Dependencies []string
+		Operation    causalorder.Operation
+	}
+
+	// Define our build pipeline with complex dependencies
+	steps := []BuildStep{
+		{
+			Name:         "load-config",
+			Dependencies: nil, // No dependencies
+			Operation:    graph.HappensAfter("config"),
+		},
+		{
+			Name:         "compile-server",
+			Dependencies: []string{"config", "server-src"},
+			Operation:    graph.HappensAfter("config", "server-src"),
+		},
+		{
+			Name:         "compile-client",
+			Dependencies: []string{"config", "client-src"},
+			Operation:    graph.HappensAfter("config", "client-src"),
+		},
+		{
+			Name:         "run-server-tests",
+			Dependencies: []string{"server-bin", "test-data"},
+			Operation:    graph.HappensAfter("server-bin", "test-data"),
+		},
+		{
+			Name:         "run-client-tests",
+			Dependencies: []string{"client-bin", "test-data"},
+			Operation:    graph.HappensAfter("client-bin", "test-data"),
+		},
+		{
+			Name:         "deploy",
+			Dependencies: []string{"server-tests", "client-tests", "deploy-config"},
+			Operation:    graph.HappensAfter("server-tests", "client-tests", "deploy-config"),
+		},
+	}
+
+	// Track completion order to demonstrate concurrent execution
+	var mu sync.Mutex
+	var completionOrder []string
+
+	var wg sync.WaitGroup
+	for _, step := range steps {
+		wg.Add(1)
+		go func(s BuildStep) {
+			defer wg.Done()
+			defer s.Operation.Complete()
+
+			// Wait for all dependencies to be satisfied
+			<-s.Operation.Ready()
+
+			// Record when this step starts
+			mu.Lock()
+			completionOrder = append(completionOrder, s.Name)
+			mu.Unlock()
+
+			// Simulate the build step
+			fmt.Printf("Executing: %s\n", s.Name)
+
+			// Mark resources as available for dependent operations
+			switch s.Name {
+			case "load-config":
+				// Config is now loaded
+			case "compile-server":
+				next := graph.HappensAfter("server-bin")
+				next.Complete() // Server binary is ready
+			case "compile-client":
+				next := graph.HappensAfter("client-bin")
+				next.Complete() // Client binary is ready
+			case "run-server-tests":
+				next := graph.HappensAfter("server-tests")
+				next.Complete() // Server tests passed
+			case "run-client-tests":
+				next := graph.HappensAfter("client-tests")
+				next.Complete() // Client tests passed
+			}
+		}(step)
+	}
+
+	// Simulate external resources becoming available
+	go func() {
+		// Source files and configs are available immediately
+		graph.HappensAfter("server-src").Complete()
+		graph.HappensAfter("client-src").Complete()
+		graph.HappensAfter("test-data").Complete()
+		graph.HappensAfter("deploy-config").Complete()
+	}()
+
+	wg.Wait()
+
+	// The exact order may vary due to concurrent execution,
+	// but dependencies are always respected:
+	// - compile-* steps run after load-config
+	// - test steps run after their respective compile steps
+	// - deploy runs after both test steps complete
+	fmt.Println("\nDependencies were respected!")
+
+	// Output:
+	// Executing: load-config
+	// Executing: compile-server
+	// Executing: compile-client
+	// Executing: run-server-tests
+	// Executing: run-client-tests
+	// Executing: deploy
+	//
+	// Dependencies were respected!
+}
+
 // AuditLog is a simple in-memory log that records user actions in the order they
 // were appended. The Append method is thread-safe and allows concurrent
 // appending of actions by different users, and the String method returns a

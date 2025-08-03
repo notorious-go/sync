@@ -16,7 +16,7 @@ import (
 //  4. (B∩1), which happens after (A∩1) and (B∩2).
 //  5. (B∩2)′, which happens after (A∩2) and (B∩1), and transitively after (A∩1) and (B∩2).
 func TestVectorOrdering(t *testing.T) {
-	var ordering causalorder.VectorOrder[string]
+	var ordering causalorder.DependencyGraph[string]
 	events := []ordertest.Event{
 		{
 			Token:        "(A∩1)",
@@ -50,8 +50,8 @@ func TestVectorOrdering(t *testing.T) {
 	ordertest.Test(t, events)
 }
 
-// TestVectorOrderingUnderStress tests VectorOrder with ~100 events representing
-// file operations in a version control system.
+// TestDependencyGraphUnderStress tests DependencyGraph with ~100 events
+// representing file operations in a version control system.
 //
 // The test generates:
 //   - 5 directory creation events (no dependencies)
@@ -61,14 +61,14 @@ func TestVectorOrdering(t *testing.T) {
 //   - Its parent directory existing (e.g. "src/main-v1" needs "mkdir-src")
 //   - Its previous version if any (e.g. "src/main-v2" needs "src/main-v1")
 //
-// This creates a realistic VectorOrder scenario where operations share some
+// This creates a realistic DependencyGraph scenario where operations share some
 // dependencies (directory) but maintain independent version chains per file.
-func TestVectorOrderingUnderStress(t *testing.T) {
+func TestDependencyGraphUnderStress(t *testing.T) {
 	type fsChain struct {
 		Kind string // Either "dir" or "file".
 		Name string // Name of the directory or file.
 	}
-	var ordering causalorder.VectorOrder[fsChain]
+	var ordering causalorder.DependencyGraph[fsChain]
 
 	// Generate events: each file has versions that depend on the directory being
 	// created and the previous version of the file.
@@ -107,6 +107,6 @@ func TestVectorOrderingUnderStress(t *testing.T) {
 		}
 	}
 
-	t.Logf("Testing VectorOrder with %d events", len(events))
+	t.Logf("Testing DependencyGraph with %d events", len(events))
 	ordertest.Test(t, events)
 }

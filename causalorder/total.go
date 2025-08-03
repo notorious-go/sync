@@ -12,7 +12,7 @@ import (
 // were added.
 //
 // Though trivial, this ordering is useful for composing more complex
-// synchronization constructs that compose several total orders.
+// synchronization constructs that apply several total orders.
 //
 // Most linear chains of operations are better serialized using mutexes,
 // channels, or other synchronization primitives. Nonetheless, TotalOrder

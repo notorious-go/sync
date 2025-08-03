@@ -16,15 +16,19 @@
 //
 //   - [TotalOrder]: Ensures all operations execute in a strict sequential order.
 //     Operations are processed one at a time in the exact order they were added.
+//     This is similar to a traditional queue, where each operation waits for the
+//     previous one to complete before proceeding.
 //
 //   - [PartialOrder]: Ensures operations with the same key execute sequentially,
-//     while operations with different keys can execute concurrently. This is
-//     useful for scenarios like processing events grouped by an identifier.
+//     while operations with different keys can execute concurrently. This is useful
+//     for scenarios like processing events grouped by an identifier. This is similar
+//     to a topic-based message queue where each partition processes messages in
+//     order, but different partitions can process messages concurrently.
 //
-//   - [VectorOrder]: Ensures operations execute in a causal order based on
-//     multiple keys, allowing concurrent execution of operations that depend on
-//     different sets of keys. An operation waits for all specified keys to be
-//     ready before proceeding.
+//   - [DependencyGraph]: Ensures operations execute in a causal order expressed as
+//     a directed acyclic graph (DAG). Each operation can depend on multiple keys,
+//     allowing concurrent execution of operations that depend on disjoint sets of
+//     keys. An operation waits for all specified keys to be ready before proceeding.
 //
 // # Operation API
 //
@@ -59,10 +63,10 @@
 //
 // # Concurrency Notes
 //
-// The ordering types (TotalOrder, PartialOrder, VectorOrder) are not safe for
-// concurrent use. They must be used from a single goroutine that is responsible
-// for defining the order of operations. This ensures the ordering semantics are
-// well-defined.
+// The ordering types (TotalOrder, PartialOrder, DependencyGraph) are not safe
+// for concurrent use. They must be used from a single goroutine that is
+// responsible for defining the order of operations. This ensures the ordering
+// semantics are well-defined.
 //
 // However, the [Operation] instances returned by HappensAfter are safe for
 // concurrent use. While typically a single goroutine manages an operation's

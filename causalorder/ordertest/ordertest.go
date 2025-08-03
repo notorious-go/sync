@@ -49,7 +49,7 @@ import (
 //   - Verifies that the declared order was satisfied using Event.Check.
 //
 // This helper is designed to test the correctness of TotalOrder, PartialOrder,
-// and VectorOrder implementations by ensuring that operations respect their
+// and DependencyGraph implementations by ensuring that operations respect their
 // declared dependencies when executing concurrently.
 func Test(t *testing.T, events []Event) {
 	t.Helper()
@@ -88,8 +88,8 @@ func Test(t *testing.T, events []Event) {
 	}
 }
 
-// Event represents a step in a concurrent [TestCase] that uses either
-// TotalOrder, PartialOrder, or VectorOrder to test the causal relationships
+// Event represents a step in a concurrent test that uses either
+// TotalOrder, PartialOrder, or DependencyGraph to test the causal relationships
 // between operations.
 //
 // Each event has a token that identifies it, a list of dependencies that

@@ -79,7 +79,7 @@ func (g *group) SetLimit(n int) {
 // A zero Matrix is valid and has no limit on the number of active goroutines.
 type Matrix[K comparable] struct {
 	group
-	ordering causalorder.VectorOrder[K]
+	ordering causalorder.DependencyGraph[K]
 }
 
 // Go calls the given function in a new goroutine. It blocks until the new

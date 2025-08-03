@@ -4,13 +4,32 @@ import (
 	"sync"
 )
 
-type VectorOrder[K comparable] struct {
+// DependencyGraph enforces causal ordering for operations with multiple
+// dependencies expressed as a directed acyclic graph. Operations can depend on
+// any number of keys and will only proceed once all their dependencies are
+// satisfied. This allows modelling complex dependency relationships while
+// maximizing concurrent execution of independent operations.
+//
+// Operations added via HappensAfter wait for the head operations of all
+// specified chain keys to be ready before proceeding. Operations with disjoint
+// sets of dependencies can be executed concurrently.
+//
+// This is the most flexible ordering strategy in the package, allowing
+// inter-operation dependencies to be expressed as a graph rather than a linear
+// chain.
+//
+// The DependencyGraph is not safe for concurrent use. It must be used from a
+// single goroutine that is responsible for defining the dependency relationships
+// between operations. This ensures the causal ordering semantics are well-defined.
+//
+// The zero-value DependencyGraph is ready to use.
+type DependencyGraph[K comparable] struct {
 	chains chainMap[K]
 }
 
 // HappensAfter returns an Operation that synchronizes after the operations
 // associated with the given keys have completed.
-func (s *VectorOrder[K]) HappensAfter(keys ...K) Operation {
+func (s *DependencyGraph[K]) HappensAfter(keys ...K) Operation {
 	if len(keys) == 0 {
 		// If no keys are provided, we can just return an Operation that is ready
 		// immediately and does not require any cleaning up.
@@ -105,6 +124,7 @@ func (h *vectorOperation[K]) Ready() <-chan struct{} {
 			close(h.readyCh)
 			return
 		}
+		// TODO: stop this goroutine if the returned channel looses reference.
 		go func(elems map[K]chainNode, ready chan struct{}) {
 			for _, n := range elems {
 				<-n.wait
