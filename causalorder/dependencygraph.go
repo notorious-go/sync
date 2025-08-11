@@ -29,7 +29,7 @@ type DependencyGraph[K comparable] struct {
 
 // HappensAfter returns an Operation that synchronizes after the operations
 // associated with the given keys have completed.
-func (s *DependencyGraph[K]) HappensAfter(keys ...K) Operation {
+func (g *DependencyGraph[K]) HappensAfter(keys ...K) Operation {
 	if len(keys) == 0 {
 		// If no keys are provided, we can just return an Operation that is ready
 		// immediately and does not require any cleaning up.
@@ -39,18 +39,14 @@ func (s *DependencyGraph[K]) HappensAfter(keys ...K) Operation {
 	if len(keys) == 1 {
 		// If only one key is provided, we can just use PartialOrder to create a more
 		// efficient Operation for that one key.
-		po := (*PartialOrder[K])(&s.chains)
+		po := (*PartialOrder[K])(&g.chains)
 		return po.HappensAfter(keys[0])
 	}
 
 	// If multiple keys are provided, we need to create a vector operation that will
 	// wait for all of them to become ready and signal completion for each of them
 	// when it is marked as complete.
-	dependencies := make(map[K]chainNode, len(keys))
-	for _, key := range keys {
-		dependencies[key] = s.chains.Advance(key)
-	}
-	return &vectorOperation[K]{chains: &s.chains, nodes: dependencies}
+	return newVectorOperation(&g.chains, keys)
 }
 
 // A loneOperation is an Operation that is ready immediately, and marking it as
@@ -90,12 +86,13 @@ func (o *loneOperation) Complete() {
 	})
 }
 
-// A vectorOperation is an Operation that waits for multiple keys to become ready
-// and signals completion for each of them when it is marked as complete.
+// A graphOperation is an Operation that is ready only when all its associated
+// nodes are ready. When completed, it signals completion for each of them when it is marked as
+// complete.
 //
 // It is used to synchronize an operation that depends on multiple operations
 // (associated with the given keys) to complete before it can proceed.
-type vectorOperation[K comparable] struct {
+type graphOperation[K comparable] struct {
 	// The map of chains which this operation is associated with. When the operation
 	// is Complete() and no more operations are pending for this key, the chain will
 	// be deleted from this map.
@@ -108,52 +105,80 @@ type vectorOperation[K comparable] struct {
 	// flag, calling Complete() twice would've panicked because channels cannot be closed
 	// more than once.
 	doneOnce sync.Once
-	// Waiting for all operations in the vector to complete is done lazily, so that
+	// Waiting for all operations in the vector to complete is done lazily, such that
 	// the ready channel is only created when Ready() is called for the first time.
+	// See the Ready() method for more details.
 	readyLazily sync.Once
 	readyCh     chan struct{}
+	completed   chan struct{}
 }
 
-func (h *vectorOperation[K]) Ready() <-chan struct{} {
-	h.readyLazily.Do(func() {
-		h.readyCh = make(chan struct{})
-		if h.shortCircuit() {
+func newVectorOperation[K comparable](chains *chainMap[K], keys []K) *graphOperation[K] {
+	// All chains share the same completed channel, which is closed by Complete().
+	// Sharing the same channel avoids allocating a new channel for each node, which
+	// would be closed in tandem with the operation's completed channel.
+	completed := make(chan struct{})
+	dependencies := make(map[K]chainNode, len(keys))
+	for _, key := range keys {
+		dependencies[key] = chains.Put(key, completed)
+	}
+	return &graphOperation[K]{
+		chains:    chains,
+		nodes:     dependencies,
+		completed: completed,
+	}
+}
+
+// Ready returns a channel that closes when all operations in the vector are
+// ready to proceed. It defers creating that channel for as long as possible to
+// increase the chance of short-circuiting the concurrent waiting goroutine,
+// thereby reducing memory usage and improving resource usage.
+func (o *graphOperation[K]) Ready() <-chan struct{} {
+	o.readyLazily.Do(func() {
+		o.readyCh = make(chan struct{})
+		if o.shortCircuit() {
 			// If all vector elements are already ready, we can close the ready channel
 			// immediately, without waiting for all those elements to become ready in a
 			// separate goroutine.
-			close(h.readyCh)
+			close(o.readyCh)
 			return
 		}
-		// TODO: stop this goroutine if the returned channel looses reference.
-		go func(elems map[K]chainNode, ready chan struct{}) {
-			for _, n := range elems {
+
+		// If not all dependent chains are ready, we must wait for them in a goroutine to
+		// avoid blocking the caller. This goroutine lives until ALL current heads of the
+		// chains are completed. The package requires callers to ALWAYS call Complete()
+		// on any Operation, so we can safely assume that the goroutine will eventually
+		// terminate.
+		go func(nodes map[K]chainNode, ready chan struct{}) {
+			for _, n := range nodes {
 				<-n.wait
 			}
 			close(ready)
-		}(h.nodes, h.readyCh)
+		}(o.nodes, o.readyCh)
 	})
-	return h.readyCh
+	return o.readyCh
 }
 
-func (h *vectorOperation[K]) Completed() <-chan struct{} {
+func (o *graphOperation[K]) Completed() <-chan struct{} {
+	return o.completed
 	// For a vector operation, the completed channel is a combination of all
 	// the done channels from its nodes. However, since Complete() closes all
 	// the done channels at once, we can create a synthetic completed channel.
-	ch := make(chan struct{})
-	go func() {
-		// Wait for all nodes to be completed
-		for _, n := range h.nodes {
-			<-n.done
-		}
-		close(ch)
-	}()
-	return ch
+	//ch := make(chan struct{})
+	//go func() {
+	//	// Wait for all nodes to be completed
+	//	for _, n := range o.nodes {
+	//		<-n.done
+	//	}
+	//	close(ch)
+	//}()
+	//return ch
 }
 
 // ShortCircuit checks if all chain elements in the vector are already ready,
 // returning true if they are, and false otherwise.
-func (h *vectorOperation[K]) shortCircuit() (completed bool) {
-	for _, n := range h.nodes {
+func (o *graphOperation[K]) shortCircuit() (completed bool) {
+	for _, n := range o.nodes {
 		select {
 		case <-n.wait:
 		default:
@@ -165,13 +190,30 @@ func (h *vectorOperation[K]) shortCircuit() (completed bool) {
 	return true
 }
 
-// Complete attempts to free the memory used by chains that are no longer relevant.
+// Complete marks this operation as completed for users and marks all nodes
+//
+// attempts to free the memory used by chains that are no longer relevant.
 // Chains become irrelevant when all operations associated with them have been
 // completed.
-func (h *vectorOperation[K]) Complete() {
-	h.doneOnce.Do(func() {
-		for k, n := range h.nodes {
-			close(n.done)
+func (o *graphOperation[K]) Complete() {
+	o.doneOnce.Do(func() {
+		// We must first close the completed channel before attempting to reclaim memory
+		// from the map of chains. Otherwise, we risk racing between the goroutine that
+		// called this method and another goroutine that is advancing chains (by calling
+		// HappensAfter).
+		//
+		// More specifically, if the map reclaims a chain before the completed channel is
+		// closed, then another goroutine may attempt to advance that reclaimed chain,
+		// which will make it immediately ready. This, in turn, will violate the causal
+		// guarantee of operations in the same DependencyGraph because this race may
+		// cause the newer operation to appear Ready before the older one has been marked
+		// as Completed.
+		//
+		// On the flip side, delaying the reclamation of chains by closing the completed
+		// channel first allows for further operations to be added to chains. This is
+		// actually more efficient than deleting a chain which would soon be recreated.
+		close(o.completed)
+		for k, n := range o.nodes {
 			// Clean up the chain for this key if it is no longer necessary.
 			//
 			// The map's Delete method guarantees that the chain is removed (and its memory
@@ -182,7 +224,7 @@ func (h *vectorOperation[K]) Complete() {
 			// for this node to complete, so we must keep the chain alive. Otherwise, any
 			// Advance() calls to that chain would be detached from those still in progress
 			// operations, which violates the causal order.
-			h.chains.Delete(k, n)
+			o.chains.Delete(k, n)
 		}
 	})
 }

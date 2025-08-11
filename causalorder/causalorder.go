@@ -86,9 +86,22 @@ func Await(op Operation) (done func()) {
 // operations into a linear order, wherein each operation must wait for all
 // previous operations to complete before beginning execution.
 //
-// The zero-value Chain is ready to use.
-type chain struct {
-	head chan struct{}
+// The zero-value chain is ready to use.
+type chain chan struct{}
+
+// Call init to ensure that the chain is ready to use. It is safe to call init
+// multiple times.
+//
+// Upon the first call, it sets the head of the chain to a closed channel,
+// marking the next operation (by calling Advance or Put) as ready to execute
+// immediately. Further calls do nothing, as the chain is already initialized.
+func (head *chain) init() {
+	// Every new chain starts with a single node, which is closed immediately to
+	// signal readiness.
+	if *head == nil {
+		*head = make(chan struct{})
+		close(*head)
+	}
 }
 
 // Advance creates a new head for the chain and returns two channels:
@@ -101,19 +114,34 @@ type chain struct {
 // The first time Advance is called, the returned wait channel is immediately
 // ready, allowing the first operation associated with this chain to proceed
 // without waiting.
-func (c *chain) Advance() chainNode {
-	// The first time we call Advance, the wait channel is immediately ready.
-	if c.head == nil {
-		c.head = make(chan struct{})
-		close(c.head) // Close the channel immediately to signal readiness.
-	}
-
+func (head *chain) Advance() chainNode {
+	head.init()
+	wait := *head
+	done := make(chan struct{})
+	*head = done
 	// The wait channel is the head of the chain set by the last Advance call. The
 	// done channel is the new head of the chain, which callers will use to signal
 	// completion for the next Advance call.
-	wait := c.head
-	c.head = make(chan struct{})
-	done := c.head
+	return chainNode{wait: wait, done: done}
+}
+
+// Put sets the new head of the chain and returns two channels:
+//
+//   - wait: is ready when the operation associated with the previous head has
+//     completed.
+//   - done: should be closed when the operation associated with the new head is
+//     complete.
+//
+// The first time Put is called, the returned wait channel is immediately ready,
+// allowing the first operation associated with this chain to proceed without
+// waiting.
+func (head *chain) Put(done chan struct{}) chainNode {
+	head.init()
+	wait := *head
+	*head = done
+	// The wait channel is the head of the chain set by the last Advance call. The
+	// done channel is the new head of the chain, which callers will use to signal
+	// completion for the next Advance call.
 	return chainNode{wait: wait, done: done}
 }
 
@@ -126,11 +154,11 @@ func (c *chain) Advance() chainNode {
 //
 // This function is valid to call even if the chain is nil, in which case it
 // returns false, indicating that the node cannot be the head of a nil chain.
-func (c *chain) IsHead(node chainNode) bool {
-	if c == nil {
+func (head *chain) IsHead(node chainNode) bool {
+	if head == nil {
 		return false
 	}
-	return c.head == node.done
+	return *head == node.done
 }
 
 // A chainNode holds the channels that represent the state of an operation in a
@@ -192,6 +220,22 @@ func (m *chainMap[K]) Advance(key K) (head chainNode) {
 		chains[key] = new(chain)
 	}
 	return chains[key].Advance()
+}
+
+// Put create a new head for the chain associated with the given key, using the
+// given done channel, and returns it.
+//
+// If the key does not exist in the map, a new chain is created for it. A key
+// without a chain is equivalent to a chain with its head marked as complete,
+// meaning that the next operation associated with that key can proceed
+// immediately.
+func (m *chainMap[K]) Put(key K, done chan struct{}) (head chainNode) {
+	chains, release := m.acquire()
+	defer release()
+	if _, exists := chains[key]; !exists {
+		chains[key] = new(chain)
+	}
+	return chains[key].Put(done)
 }
 
 // Delete removes the chain associated with the given key from the map only if
