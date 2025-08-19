@@ -10,6 +10,13 @@
 #    • Marketplace:   https://github.com/marketplace/actions/super-linter
 #    • Configuration: https://github.com/super-linter/super-linter#environment-variables
 #
+# 💻 Run locally:
+#    docker run --platform=linux/amd64 \
+#      -e LOG_LEVEL=DEBUG \
+#      -e RUN_LOCAL=true \
+#      -v "$(git rev-parse --show-toplevel)":/tmp/lint \
+#      ghcr.io/super-linter/super-linter:latest
+#
 # ═══════════════════════════════════════════════════════════════════════════════
 
 name: Super-Linter
