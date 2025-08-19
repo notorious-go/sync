@@ -79,3 +79,36 @@ func (s Semaphore) Release() {
 	}
 	<-s
 }
+
+// TryAcquire attempts to acquire a token without blocking. Returns true if a
+// token was acquired, false if the semaphore is at capacity.
+//
+// For nil semaphores, it always returns true since capacity is unlimited.
+//
+// Note: TryAcquire may succeed even when other goroutines are blocked on
+// Acquire, as it inherits Go's channel "barging" behaviour. This means there is
+// no strict FIFO ordering between blocking Acquire calls and non-blocking
+// TryAcquire attempts.
+//
+// This is useful when you want to attempt an operation but fall back to
+// alternative behaviour if the semaphore is full:
+//
+//	if s.TryAcquire() {
+//	    defer s.Release()
+//	    // ... do work ...
+//	} else {
+//	    // ... handle the "too busy" case ...
+//	}
+func (s Semaphore) TryAcquire() bool {
+	if s == nil {
+		// The nil Semaphore has no limit, which means it does not block and always
+		// allows acquiring another token.
+		return true
+	}
+	select {
+	case s <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
