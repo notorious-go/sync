@@ -42,3 +42,40 @@ func (s Semaphore) String() string {
 	}
 	return fmt.Sprintf("Semaphore(%v/%v)", len(s), cap(s))
 }
+
+// Acquire blocks until a token becomes available, then acquires it.
+//
+// For nil semaphores (unlimited capacity), this never blocks and returns
+// immediately. For bounded semaphores, this will block if all tokens are
+// currently held by other goroutines.
+//
+// Typical usage pattern:
+//
+//	s.Acquire()
+//	defer s.Release()
+//	// ... do work ...
+func (s Semaphore) Acquire() {
+	if s == nil {
+		// The nil Semaphore has no limit, which means it allows acquiring another token
+		// immediately.
+		return
+	}
+	s <- struct{}{}
+}
+
+// Release returns a token to the semaphore, allowing another blocked goroutine
+// to proceed. Release must be called exactly once for each successful Acquire or
+// TryAcquire(true) to maintain the semaphore's count invariant.
+//
+// For nil semaphores, this is a no-op since tokens were never actually limited.
+//
+// Calling Release more times than Acquire will block because it will attempt to
+// send to a channel that has no receivers.
+func (s Semaphore) Release() {
+	if s == nil {
+		// The nil Semaphore has no limit, which means it does not require actually
+		// releasing a token because it was never actually acquired in the first place.
+		return
+	}
+	<-s
+}
