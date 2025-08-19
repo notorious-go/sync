@@ -1,0 +1,15 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# golangci-lint Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 🚀 Fast linter aggregator for Go - runs multiple static analysis tools
+#    in parallel to ensure code quality, consistency, and best practices.
+#
+# 📚 Resources:
+#    • Documentation: https://golangci-lint.run
+#    • Configuration: https://golangci-lint.run/docs/configuration/file
+#    • JSON Schema:   https://golangci-lint.run/jsonschema/golangci.jsonschema.json
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: "2"
