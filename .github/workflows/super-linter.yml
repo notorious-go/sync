@@ -1,0 +1,36 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Super-Linter GitHub Actions Workflow
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 🚀 Combination of multiple linters to run as a GitHub Action - includes
+#    actionlint for GitHub Actions and markdownlint for Markdown files.
+#
+# 📚 Resources:
+#    • Documentation: https://github.com/super-linter/super-linter
+#    • Marketplace:   https://github.com/marketplace/actions/super-linter
+#    • Configuration: https://github.com/super-linter/super-linter#environment-variables
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: Super-Linter
+
+on: [push, pull_request]
+
+jobs:
+  super-lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      # To report GitHub Actions status checks.
+      statuses: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The super-linter needs the full git history to get the
+          # list of files that changed across commits.
+          fetch-depth: 0
+      - uses: super-linter/super-linter@v8
+        env:
+          # To report GitHub Actions status checks.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
