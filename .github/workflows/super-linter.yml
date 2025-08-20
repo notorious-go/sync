@@ -21,7 +21,10 @@
 
 name: Super-Linter
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 # Ensure top-level permissions are not set to write-all.
 permissions: {}
