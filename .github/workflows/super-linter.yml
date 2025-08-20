@@ -23,6 +23,9 @@ name: Super-Linter
 
 on: [push, pull_request]
 
+# Ensure top-level permissions are not set to write-all.
+permissions: {}
+
 jobs:
   super-lint:
     runs-on: ubuntu-latest
