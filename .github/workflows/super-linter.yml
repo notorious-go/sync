@@ -14,6 +14,7 @@
 #    docker run --platform=linux/amd64 \
 #      -e LOG_LEVEL=DEBUG \
 #      -e RUN_LOCAL=true \
+#      -e VALIDATE_GITHUB_ACTIONS_ZIZMOR=false \
 #      -v "$(git rev-parse --show-toplevel)":/tmp/lint \
 #      ghcr.io/super-linter/super-linter:latest
 #
@@ -46,3 +47,5 @@ jobs:
         env:
           # To report GitHub Actions status checks.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Disable new zizmor GitHub Actions linter.
+          VALIDATE_GITHUB_ACTIONS_ZIZMOR: false
