@@ -1,0 +1,29 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# yamllint Configuration  
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 📝 YAML linter that checks syntax, formatting, and common issues in YAML files.
+#    Used by Super-Linter to validate GitHub Actions, configs, and other YAML.
+#
+# 📚 Resources:
+#    • Documentation: https://yamllint.readthedocs.io/
+#    • Configuration: https://yamllint.readthedocs.io/en/stable/configuration.html
+#    • Rules:         https://yamllint.readthedocs.io/en/stable/rules.html
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+extends: default
+
+rules:
+  # Only warn about lines longer than 80 characters (don't error)
+  line-length:
+    max: 80
+    level: warning
+  
+  # Only warn about missing document start (don't error)
+  document-start:
+    level: warning
+  
+  # Only warn about empty brackets formatting (don't error)
+  brackets:
+    level: warning
