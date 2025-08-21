@@ -26,17 +26,16 @@ on:
     branches: [main]
   pull_request:
 
-# Ensure top-level permissions are not set to write-all.
-permissions: {}
+# Ensure minimalistic permissions.
+permissions:
+  contents: read
+  packages: read
+  # To report GitHub Actions status checks.
+  statuses: write
 
 jobs:
   super-lint:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-      # To report GitHub Actions status checks.
-      statuses: write
     steps:
       - uses: actions/checkout@v5
         with:
