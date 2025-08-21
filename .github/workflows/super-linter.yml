@@ -1,0 +1,51 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Super-Linter GitHub Actions Workflow
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 🚀 Combination of multiple linters to run as a GitHub Action - includes
+#    actionlint for GitHub Actions and markdownlint for Markdown files.
+#
+# 📚 Resources:
+#    • Documentation: https://github.com/super-linter/super-linter
+#    • Marketplace:   https://github.com/marketplace/actions/super-linter
+#    • Configuration: https://github.com/super-linter/super-linter#environment-variables
+#
+# 💻 Run locally:
+#    docker run --platform=linux/amd64 \
+#      -e LOG_LEVEL=DEBUG \
+#      -e RUN_LOCAL=true \
+#      -e VALIDATE_GITHUB_ACTIONS_ZIZMOR=false \
+#      -v "$(git rev-parse --show-toplevel)":/tmp/lint \
+#      ghcr.io/super-linter/super-linter:latest
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: Super-Linter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Ensure minimalistic permissions.
+permissions:
+  contents: read
+  packages: read
+  # To report GitHub Actions status checks.
+  statuses: write
+
+jobs:
+  super-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The super-linter needs the full git history to get the
+          # list of files that changed across commits.
+          fetch-depth: 0
+      - uses: super-linter/super-linter@v8
+        env:
+          # To report GitHub Actions status checks.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Disable new zizmor GitHub Actions linter.
+          VALIDATE_GITHUB_ACTIONS_ZIZMOR: false

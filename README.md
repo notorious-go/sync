@@ -20,7 +20,7 @@ general-purpose but specialized concurrency challenges.
 Each concurrency primitive is implemented as its own Go module to prevent dependency bloat. You can
 import only the specific constructs you need:
 
-```
+```shell
 go get github.com/notorious-go/sync/[module-name]
 ```
 
@@ -51,7 +51,7 @@ This follows Go's multi-module repository conventions:
 
 For example:
 
-```
+```shell
 git tag workerpool/v1.0.0    # versions the workerpool module at v1.0.0
 git tag semaphore/v3.2.1     # versions the semaphore module at v3.2.1
 ```
