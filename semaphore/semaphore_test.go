@@ -8,7 +8,7 @@ import (
 )
 
 func Example() {
-	sem := semaphore.NewSemaphore(2)
+	sem := semaphore.New(2)
 	fmt.Println("Created:", sem)
 	printSemaphore(sem, "Initial state")
 	defer printSemaphore(sem, "Final state - all tokens released")
@@ -70,7 +70,7 @@ func printSemaphore(s semaphore.Semaphore, msg string) {
 // nil Semaphore means "unlimited" rather than "blocks forever" like nil channels.
 // If you bypass this API, you lose this semantic and risk deadlocks.
 func Example_antiPattern() {
-	sem := semaphore.NewSemaphore(1)
+	sem := semaphore.New(1)
 	printSemaphore(sem, "Initial state")
 
 	// You might be tempted to use the semaphore in a select statement for timeouts.

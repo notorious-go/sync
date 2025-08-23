@@ -18,12 +18,12 @@ import (
 // For nil semaphores, both len and cap return 0.
 type Semaphore chan struct{}
 
-// NewSemaphore creates semaphores with the specified limit. A negative limit
+// New creates semaphores with the specified limit. A negative limit
 // indicates an unlimited semaphore that never blocks on acquisition.
 //
 // This design choice allows callers to use the same interface whether they want
 // bounded or unbounded concurrency without special-casing in their code.
-func NewSemaphore(limit int) Semaphore {
+func New(limit int) Semaphore {
 	if limit < 0 {
 		// The nil Semaphore has no limit, which is the meaning of setting the limit
 		// parameter to negative values.
