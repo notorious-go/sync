@@ -69,8 +69,10 @@ func (s Semaphore) Acquire() {
 //
 // For nil semaphores, this is a no-op since tokens were never actually limited.
 //
-// Calling Release more times than Acquire will block because it will attempt to
-// send to a channel that has no receivers.
+// WARNING: Calling Release more times than Acquire will BLOCK PERMANENTLY
+// because it attempts to receive from a channel with no pending sends.
+// This is a programming error that will deadlock your application.
+// Always ensure Release is called exactly once per Acquire/TryAcquire(true).
 func (s Semaphore) Release() {
 	if s == nil {
 		// The nil Semaphore has no limit, which means it does not require actually
