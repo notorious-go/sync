@@ -3,6 +3,10 @@ package semaphore_test
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"sync/atomic"
+	"testing"
+	"testing/synctest"
 
 	"github.com/notorious-go/sync/semaphore"
 )
@@ -99,4 +103,67 @@ func Example_antiPattern() {
 	//   Semaphore: cap=1, acquired=1, available=0
 	// Released via direct channel receive
 	//   Semaphore: cap=1, acquired=0, available=1
+}
+
+// TestSemaphoreContention verifies that the semaphore correctly limits
+// concurrency under various contention levels.
+//
+// The semaphore limit is set to GOMAXPROCS because that represents the actual
+// parallelism available on this machine - there's no point allowing more
+// concurrent operations than the number of CPUs that can execute them
+// simultaneously. This makes the test realistic and ensures we're testing
+// meaningfully on the host machine.
+func TestSemaphoreContention(t *testing.T) {
+	maxprocs := runtime.GOMAXPROCS(0)
+	t.Logf("Testing with GOMAXPROCS=%d", maxprocs)
+
+	tests := []struct {
+		level  string // Contention level, in human-readable form.
+		factor int    // Multiplier for GOMAXPROCS to determine the number of goroutines.
+	}{
+		{level: "2x", factor: 2},     // Basic contention - double demand.
+		{level: "8x", factor: 8},     // High contention - two orders of magnitude more.
+		{level: "64x", factor: 64},   // Higher contention - four orders of magnitude more.
+		{level: "256x", factor: 256}, // Extreme contention - eight orders of magnitude more.
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.level, func(t *testing.T) {
+			goroutines := maxprocs * tt.factor
+			sem := semaphore.New(maxprocs)
+			// Start goroutines inside the synctest bubble, just because I'm curious about it
+			// more than another WaitGroup.
+			synctest.Test(t, func(t *testing.T) {
+				var usage atomic.Int32
+				for i := 0; i < goroutines; i++ {
+					go func() {
+						sem.Acquire()
+						defer sem.Release()
+						// Check no more than maxprocs are acquired at once.
+						active := usage.Add(1)
+						defer usage.Add(-1)
+						if active > int32(maxprocs) {
+							t.Errorf("Acquired too many tokens: %v > %v", active, maxprocs)
+						}
+					}()
+				}
+			})
+
+			// For sanity, double-check no more pending releases.
+			if len(sem) != 0 {
+				t.Errorf("Semaphore has %d unreleased tokens after all operations complete", len(sem))
+			}
+		})
+	}
+}
+
+// This benchmark is quite meaningless since it just measures channel
+// send/receive performance. It is included for convenience to provide a common
+// benchmark for users that measure on their own systems.
+func BenchmarkPairedAcquireRelease(b *testing.B) {
+	sem := semaphore.New(1)
+	for b.Loop() {
+		sem.Acquire()
+		sem.Release()
+	}
 }
