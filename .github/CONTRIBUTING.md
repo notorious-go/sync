@@ -37,6 +37,7 @@ Before submitting your PR, validate your changes:
 docker run --rm --platform=linux/amd64 \
   -e RUN_LOCAL=true \
   -e DEFAULT_BRANCH=main \
+  -e LOG_LEVEL=WARN \
   -e VALIDATE_GITHUB_ACTIONS_ZIZMOR=false \
   -v "$(git rev-parse --show-toplevel)":/tmp/lint \
   -v "$(git rev-parse --git-common-dir)":"$(git rev-parse --git-common-dir)" \
@@ -46,6 +47,8 @@ docker run --rm --platform=linux/amd64 \
 The `--platform=linux/amd64` flag provides compatibility on Apple Silicon Macs, until super-linter supports ARM natively.
 
 When working with worktrees, you'll need to mount the worktree directory as a volume in the Docker container.
+
+Setting `LOG_LEVEL=WARN` will reduce the verbosity of the linter output, making it easier to focus on relevant issues. Likewise, `LOG_LEVEL=DEBUG` can be used for more detailed output when troubleshooting.
 
 For automatic fixes to common issues, see super-linter's [automatic fixing documentation][autofix].
 
