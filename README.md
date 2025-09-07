@@ -37,8 +37,9 @@ This repository does not contain a Go module at its root by design. Instead, eac
 primitive is packaged as an independent module in its own subdirectory. This approach prevents
 dependency bloat and allows you to import only the specific constructs you need.
 
-_Modules will be added as they are developed. Each will be documented here with usage examples and
-installation instructions._
+| Module                       | Docs                                                                                                                                              | Description                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **[semaphore](./semaphore)** | [![Go Reference](https://pkg.go.dev/badge/github.com/notorious-go/sync/semaphore.svg)](https://pkg.go.dev/github.com/notorious-go/sync/semaphore) | A counting semaphore for limiting the goroutine groups. |
 
 ### Versioning with Git Tags
 
