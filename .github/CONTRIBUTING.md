@@ -39,10 +39,13 @@ docker run --rm --platform=linux/amd64 \
   -e DEFAULT_BRANCH=main \
   -e VALIDATE_GITHUB_ACTIONS_ZIZMOR=false \
   -v "$(git rev-parse --show-toplevel)":/tmp/lint \
+  -v "$(git rev-parse --git-common-dir)":"$(git rev-parse --git-common-dir)" \
   ghcr.io/super-linter/super-linter:latest
 ```
 
 The `--platform=linux/amd64` flag provides compatibility on Apple Silicon Macs, until super-linter supports ARM natively.
+
+When working with worktrees, you'll need to mount the worktree directory as a volume in the Docker container.
 
 For automatic fixes to common issues, see super-linter's [automatic fixing documentation][autofix].
 
