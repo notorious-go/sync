@@ -72,12 +72,18 @@ require (
 
 ## Contributing
 
-Contributions should follow standard Go practices:
+Please read our [Contribution guidelines][] before submitting new Pull-Requests.
 
-- Code style follows the [Google Go Style Guide](https://google.github.io/styleguide/go/)
-- Commit messages follow conventional format
+In a nutshell, contributions should follow standard Go practices:
+
+- Code style follows the [Google Go Style Guide][]
+- Commit messages follow [Go commit format][]
 - All code must include tests and documentation
-- Run `go fmt`, `go vet`, and `go test` before submitting
+- Run the standard go tools (`go test`, `go fmt`, etc.) before submitting
+
+[Contribution guidelines]: ./.github/CONTRIBUTING.md
+[Google Go Style Guide]: https://google.github.io/styleguide/go/
+[Go commit format]: https://go.dev/wiki/CommitMessage
 
 ## License
 
