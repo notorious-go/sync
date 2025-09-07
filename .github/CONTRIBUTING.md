@@ -37,6 +37,7 @@ Before submitting your PR, validate your changes:
 docker run --rm --platform=linux/amd64 \
   -e RUN_LOCAL=true \
   -e DEFAULT_BRANCH=main \
+  -e VALIDATE_GITHUB_ACTIONS_ZIZMOR=false \
   -v "$(git rev-parse --show-toplevel)":/tmp/lint \
   ghcr.io/super-linter/super-linter:latest
 ```
@@ -44,6 +45,8 @@ docker run --rm --platform=linux/amd64 \
 The `--platform=linux/amd64` flag provides compatibility on Apple Silicon Macs, until super-linter supports ARM natively.
 
 For automatic fixes to common issues, see super-linter's [automatic fixing documentation][autofix].
+
+This "ZIZMOR" pedantic GHA analyzer is disabled because it is overly strict.
 
 [super-linter]: https://github.com/super-linter/super-linter
 [autofix]: https://github.com/super-linter/super-linter#how-to-use-fix-mode
