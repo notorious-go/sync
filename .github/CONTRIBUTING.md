@@ -26,6 +26,28 @@ request being accepted:
 Draft pull requests are also welcome to get feedback early on, or if there is
 something blocking you.
 
+## Running super-linter locally
+
+All pull requests are validated with [super-linter][]. Since super-linter runs
+via Docker, you'll need Docker installed to run it locally.
+
+Before submitting your PR, validate your changes:
+
+```bash
+docker run --rm --platform=linux/amd64 \
+  -e RUN_LOCAL=true \
+  -e DEFAULT_BRANCH=main \
+  -v "$(git rev-parse --show-toplevel)":/tmp/lint \
+  ghcr.io/super-linter/super-linter:latest
+```
+
+The `--platform=linux/amd64` flag provides compatibility on Apple Silicon Macs, until super-linter supports ARM natively.
+
+For automatic fixes to common issues, see super-linter's [automatic fixing documentation][autofix].
+
+[super-linter]: https://github.com/super-linter/super-linter
+[autofix]: https://github.com/super-linter/super-linter#how-to-use-fix-mode
+
 ## Resources
 
 - [Go `sync` package][]
