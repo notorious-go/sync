@@ -66,3 +66,17 @@ func Ready(op Operation) (ready bool) {
 		return false
 	}
 }
+
+// Completed checks whether the given operation has been completed.
+//
+// If the given operation is not completed, we say it is pending, meaning it is
+// either ready to be executed or blocking on some other operations to complete
+// before it can be executed.
+func Completed(op Operation) (completed bool) {
+	select {
+	case <-op.Completed():
+		return true
+	default:
+		return false
+	}
+}
