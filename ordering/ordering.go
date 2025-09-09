@@ -53,3 +53,16 @@ type Operation interface {
 	// once per operation.
 	Complete()
 }
+
+// Ready checks whether the given operation is ready to be executed.
+//
+// If the given operation is not ready, we say it is blocking, meaning it is
+// waiting for some other operations to complete before it can be executed.
+func Ready(op Operation) (ready bool) {
+	select {
+	case <-op.Ready():
+		return true
+	default:
+		return false
+	}
+}
