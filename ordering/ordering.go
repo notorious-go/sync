@@ -80,3 +80,27 @@ func Completed(op Operation) (completed bool) {
 		return false
 	}
 }
+
+// Await is a convenience function that blocks until the given Operation is ready
+// to execute and returns a done function that must be called to mark the
+// operation as complete.
+//
+// This function provides syntactic sugar for the common pattern of waiting for
+// an operation to be ready and then marking it as complete:
+//
+//	done := ordering.Await(op)
+//	defer done()
+//	// ... perform operation ...
+//
+// This is equivalent to:
+//
+//	<-op.Ready()
+//	defer op.Complete()
+//	// ... perform operation ...
+//
+// The returned done function is safe to call multiple times and should always be
+// called to prevent blocking further operations in the causal chain.
+func Await(op Operation) (done func()) {
+	<-op.Ready()
+	return op.Complete
+}

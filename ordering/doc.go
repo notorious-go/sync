@@ -22,6 +22,12 @@
 //	    // perform work
 //	}()
 //
+// The Await helper function simplifies the common pattern:
+//
+//	done := ordering.Await(op)
+//	defer done()
+//	// ... perform operation ...
+//
 // It is also common for workers to abort operations; most commonly cancelled
 // using context:
 //
