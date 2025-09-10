@@ -78,4 +78,19 @@
 //	// Operation depends on multiple prerequisites
 //	op := order.HappensAfter("auth", "data-load", "validation")
 //	go performComplexOperation(op)
+//
+// # Concurrent Groups
+//
+// Each ordering package also provides a group type (Queue for totalorder)
+// that combines ordering with goroutine lifecycle management:
+//
+//	var group pkg.GroupType
+//	group.SetLimit(10) // Max 10 concurrent goroutines
+//
+//	for _, task := range tasks {
+//	    group.Go(func() {
+//	        processTask(task)
+//	    })
+//	}
+//	group.Wait() // Wait for all tasks to complete
 package ordering
