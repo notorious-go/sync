@@ -1,0 +1,106 @@
+package ordering
+
+// Operation represents a unit of work in a causally ordered execution chain. It
+// provides synchronization points for managing when an operation can begin and
+// signalling when it has completed.
+//
+// An Operation is the fundamental building block for enforcing "happens-after"
+// relationships in concurrent programs. Each Operation waits for its causal
+// dependencies to complete before becoming ready and signals its own completion
+// to unblock dependent operations.
+//
+// The Operation interface provides a channel-based API that enables flexible
+// synchronization patterns:
+//   - Block until ready using <-op.Ready()
+//   - Select with multiple channels: select { case <-op.Ready(): ... case <-ctx.Done(): ... }
+//   - Check readiness without blocking: select { case <-op.Ready(): ... default: ... }
+//   - Monitor completion: <-op.Completed()
+//
+// Operations are safe for concurrent use. While typically a single goroutine
+// manages an operation's lifecycle, the channels can be safely accessed from
+// multiple goroutines when coordination is needed.
+type Operation interface {
+	// Ready returns a channel that closes when all causal dependencies have
+	// completed, signalling that this operation may begin execution.
+	//
+	// The channel is closed exactly once and remains closed thereafter. Multiple
+	// goroutines may safely wait on this channel.
+	//
+	// For the first operation in a chain, this channel is closed immediately,
+	// allowing it to proceed without waiting.
+	Ready() <-chan struct{}
+
+	// Completed returns a channel that closes when this operation has been marked
+	// as complete via the Complete method.
+	//
+	// The channel is closed when Complete is called for the first time and
+	// remains closed thereafter.
+	Completed() <-chan struct{}
+
+	// Complete marks this operation as finished, closing the Completed channel and
+	// allowing any causally dependent operations to proceed.
+	//
+	// This method MUST be called at least once when the operation finishes, whether
+	// it succeeds, fails, or is cancelled. Failing to call Complete will cause all
+	// dependent operations to block indefinitely, potentially causing goroutine
+	// and memory leaks.
+	//
+	// Users are encouraged to use defer op.Complete() immediately after starting an
+	// operation to ensure completion even in case of errors or early returns.
+	//
+	// Complete is safe to call multiple times - subsequent calls are no-ops.
+	// However, for clarity and correctness, it should typically be called exactly
+	// once per operation.
+	Complete()
+}
+
+// Ready checks whether the given operation is ready to be executed.
+//
+// If the given operation is not ready, we say it is blocking, meaning it is
+// waiting for some other operations to complete before it can be executed.
+func Ready(op Operation) (ready bool) {
+	select {
+	case <-op.Ready():
+		return true
+	default:
+		return false
+	}
+}
+
+// Completed checks whether the given operation has been completed.
+//
+// If the given operation is not completed, we say it is pending, meaning it is
+// either ready to be executed or blocking on some other operations to complete
+// before it can be executed.
+func Completed(op Operation) (completed bool) {
+	select {
+	case <-op.Completed():
+		return true
+	default:
+		return false
+	}
+}
+
+// Await is a convenience function that blocks until the given Operation is ready
+// to execute and returns a done function that must be called to mark the
+// operation as complete.
+//
+// This function provides syntactic sugar for the common pattern of waiting for
+// an operation to be ready and then marking it as complete:
+//
+//	done := ordering.Await(op)
+//	defer done()
+//	// ... perform operation ...
+//
+// This is equivalent to:
+//
+//	<-op.Ready()
+//	defer op.Complete()
+//	// ... perform operation ...
+//
+// The returned done function is safe to call multiple times and should always be
+// called to prevent blocking further operations in the causal chain.
+func Await(op Operation) (done func()) {
+	<-op.Ready()
+	return op.Complete
+}

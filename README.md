@@ -40,6 +40,7 @@ dependency bloat and allows you to import only the specific constructs you need.
 | Module                       | Docs                                                                                                                                              | Description                                             |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | **[semaphore](./semaphore)** | [![Go Reference](https://pkg.go.dev/badge/github.com/notorious-go/sync/semaphore.svg)](https://pkg.go.dev/github.com/notorious-go/sync/semaphore) | A counting semaphore for limiting the goroutine groups. |
+| **[ordering](./ordering)**   | [![Go Reference](https://pkg.go.dev/badge/github.com/notorious-go/sync/ordering.svg)](https://pkg.go.dev/github.com/notorious-go/sync/ordering)   | Causal ordering primitives for concurrent operations.   |
 
 ### Versioning with Git Tags
 
