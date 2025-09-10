@@ -1,5 +1,12 @@
 // Package ordering provides synchronization primitives for managing the causal
-// ordering of concurrent operations.
+// ordering of concurrent operations. It offers ordering strategies that allow
+// developers to express different types of dependencies between operations
+// while maximizing concurrent execution where possible.
+//
+// The package is organized into sub-packages, each implementing a different
+// ordering strategy:
+//
+//   - totalorder: Enforces strict sequential ordering of all operations
 //
 // # Operation Interface
 //
@@ -39,5 +46,16 @@
 //	case <-ctx.Done():
 //	    op.Complete() // Important: still call Complete
 //	    return ctx.Err()
+//	}
+//
+// # Choosing an Ordering Strategy
+//
+// Use the totalorder package when the source of tasks is a totally ordered
+// stream, wherein each operation must happen strictly after the previous one.
+//
+//	var order totalorder.TotalOrder
+//	for _, task := range tasks {
+//	    op := order.HappensNext()
+//	    go processTask(op, task)
 //	}
 package ordering
