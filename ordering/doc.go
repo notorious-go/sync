@@ -81,8 +81,8 @@
 //
 // # Concurrent Groups
 //
-// Each ordering package also provides a group type (Queue for totalorder)
-// that combines ordering with goroutine lifecycle management:
+// Each ordering package also provides a group type (Queue for totalorder,
+// Topic for partialorder) that combines ordering with goroutine lifecycle management:
 //
 //	var group pkg.GroupType
 //	group.SetLimit(10) // Max 10 concurrent goroutines
