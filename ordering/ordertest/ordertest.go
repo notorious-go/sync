@@ -170,3 +170,60 @@ func (e Event) index(tokens []string) (index int, found bool) {
 	}
 	return 0, false
 }
+
+// TestOperationInterface verifies that the given [ordering.Operation] correctly
+// implements the expected interface behaviours.
+//
+// Pass two operations where the second operation depends on the first, and the
+// first operation is already ready.
+//
+// This function checks that:
+//   - The Ready channel is immediately ready for the first operation.
+//   - Completing the first operation unblocks the second operation's Ready channel.
+//   - Calling Complete multiple times does not cause a panic.
+//
+// This helper is useful for validating custom implementations of ordering.Operation
+// to ensure they conform to the expected behaviour defined by the ordering package.
+func TestOperationInterface(t *testing.T, first, second ordering.Operation) {
+	t.Helper()
+
+	// The first operation should be immediately ready and not yet completed.
+	if !ordering.Ready(first) {
+		t.Error("Initial: Ready(first operation) = false; want true")
+	}
+	if ordering.Completed(first) {
+		t.Error("Initial: Completed(first operation) = true; want false")
+	}
+	// The second operation should not be ready yet, and not yet completed.
+	if ordering.Ready(second) {
+		t.Error("Initial: Ready(second operation) = true; want false")
+	}
+	if ordering.Completed(second) {
+		t.Error("Initial: Completed(second operation) = true; want false")
+	}
+
+	// Completing the first operation should mark it as completed and make the second
+	// operation ready.
+	first.Complete()
+	if !ordering.Completed(first) {
+		t.Error("Interim: Completed(first operation) = false; want true")
+	}
+	if !ordering.Ready(second) {
+		t.Error("Interim: Ready(second operation) = false; want true")
+	}
+
+	// Completing the second operation should mark it as completed.
+	second.Complete()
+	if !ordering.Completed(second) {
+		t.Error("Final: Completed(second operation) = false; want true")
+	}
+
+	// Calling Complete multiple times should not panic.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Complete() panicked on multiple calls: %v", r)
+		}
+	}()
+	first.Complete()
+	second.Complete()
+}
