@@ -8,6 +8,7 @@
 //
 //   - totalorder: Enforces strict sequential ordering of all operations
 //   - partialorder: Enforces sequential ordering per key, allowing concurrent execution across keys
+//   - causalorder: Enforces complex dependency graphs with multiple dependencies per operation
 //
 // # Operation Interface
 //
@@ -69,4 +70,12 @@
 //	    op := order.HappensAfter(event.UserID)
 //	    go processUserEvent(op, event)
 //	}
+//
+// Use the causalorder package when the source contains complex dependencies on
+// dynamic/multiple previous operations:
+//
+//	var order causalorder.CausalOrder[string]
+//	// Operation depends on multiple prerequisites
+//	op := order.HappensAfter("auth", "data-load", "validation")
+//	go performComplexOperation(op)
 package ordering
