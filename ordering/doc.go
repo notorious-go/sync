@@ -7,6 +7,7 @@
 // ordering strategy:
 //
 //   - totalorder: Enforces strict sequential ordering of all operations
+//   - partialorder: Enforces sequential ordering per key, allowing concurrent execution across keys
 //
 // # Operation Interface
 //
@@ -57,5 +58,15 @@
 //	for _, task := range tasks {
 //	    op := order.HappensNext()
 //	    go processTask(op, task)
+//	}
+//
+// Use the partialorder package when the source contains partially ordered
+// events, wherein operations must be ordered within groups but can run
+// concurrently across groups:
+//
+//	var order partialorder.PartialOrder[string]
+//	for _, event := range events {
+//	    op := order.HappensAfter(event.UserID)
+//	    go processUserEvent(op, event)
 //	}
 package ordering
