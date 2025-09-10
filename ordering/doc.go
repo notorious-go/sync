@@ -10,6 +10,9 @@
 //   - partialorder: Enforces sequential ordering per key, allowing concurrent execution across keys
 //   - causalorder: Enforces complex dependency graphs with multiple dependencies per operation
 //
+// All ordering strategies implement the Operation interface, providing a uniform
+// API for synchronization regardless of the chosen strategy.
+//
 // # Operation Interface
 //
 // The [Operation] interface is the core abstraction that all ordering strategies
@@ -94,4 +97,22 @@
 //	    })
 //	}
 //	group.Wait() // Wait for all tasks to complete
+//
+// # Best Practices
+//
+// 1. Always call Complete(): Failing to call Complete() will block dependent operations
+// indefinitely, causing goroutine leaks.
+//
+// 2. Use defer: Always use `defer op.Complete()` immediately after Ready() to ensure
+// completion even if the operation panics.
+//
+// 3. Choose the right strategy: Use the simplest ordering that meets your needs.
+// CausalOrder is the most flexible and has little overhead, but run your own
+// benchmarks.
+//
+// 4. Consider memory usage: Chains are automatically cleaned up when no operations
+// are pending, but long-lived ordering objects with many keys may accumulate memory.
+//
+// 5. Single producer: The ordering objects are not safe for concurrent use. Define
+// a single order from a single goroutine.
 package ordering
